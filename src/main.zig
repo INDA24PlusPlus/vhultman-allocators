@@ -55,7 +55,6 @@ const BumpAllocator = struct {
         _ = log2_buf_align;
         _ = new_size;
         _ = return_address;
-
         // Maybe later, for now resizing is not supported.
         return false;
     }
@@ -64,7 +63,7 @@ const BumpAllocator = struct {
         _ = log2_buf_align;
         _ = return_address;
         const state: *BumpAllocator = @ptrCast(@alignCast(ctx));
-        if (state.ptr - slice.len == @intFromPtr(slice.ptr)) {
+        if (@intFromPtr(state.mem.ptr) + state.ptr - slice.len == @intFromPtr(slice.ptr)) {
             state.ptr -= slice.len;
         }
     }
