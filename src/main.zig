@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub fn main() !void {
-    var free_list_state = FreeListAllocator.init(std.heap.page_allocator);
+    var free_list_state = BumpAllocator.init(try std.heap.page_allocator.alloc(u8, 1 << 20));
     const alloc = free_list_state.allocator();
 
     const mem = try alloc.alignedAlloc(u32, 64, 10);
@@ -12,6 +12,63 @@ pub fn main() !void {
     const new_mem = try alloc.alignedAlloc(u32, 1, 5);
     alloc.free(new_mem);
 }
+
+const BumpAllocator = struct {
+    mem: []u8,
+    ptr: usize,
+
+    pub fn init(mem: []u8) BumpAllocator {
+        return .{ .mem = mem, .ptr = 0 };
+    }
+
+    pub fn allocator(self: *BumpAllocator) std.mem.Allocator {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .alloc = alloc,
+                .free = free,
+                .resize = resize,
+            },
+        };
+    }
+
+    fn alloc(ctx: *anyopaque, n: usize, log2_align: u8, ra: usize) ?[*]u8 {
+        _ = ra;
+        _ = log2_align;
+        const state: *BumpAllocator = @ptrCast(@alignCast(ctx));
+        if (state.ptr + n >= state.mem.len) {
+            return null;
+        }
+        defer state.ptr += n;
+
+        return state.mem[state.ptr .. state.ptr + n].ptr;
+    }
+
+    fn resize(
+        _: *anyopaque,
+        buf_unaligned: []u8,
+        log2_buf_align: u8,
+        new_size: usize,
+        return_address: usize,
+    ) bool {
+        _ = buf_unaligned;
+        _ = log2_buf_align;
+        _ = new_size;
+        _ = return_address;
+
+        // Maybe later, for now resizing is not supported.
+        return false;
+    }
+
+    fn free(ctx: *anyopaque, slice: []u8, log2_buf_align: u8, return_address: usize) void {
+        _ = log2_buf_align;
+        _ = return_address;
+        const state: *BumpAllocator = @ptrCast(@alignCast(ctx));
+        if (state.ptr - slice.len == @intFromPtr(slice.ptr)) {
+            state.ptr -= slice.len;
+        }
+    }
+};
 
 const FreeListAllocator = struct {
     const FreeList = std.DoublyLinkedList([]u8);
